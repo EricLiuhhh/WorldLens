@@ -96,7 +96,7 @@ Run through the normal WorldLens entrypoint:
 
 ```bash
 cd /path/to/WorldLens
-python tools/evaluate.py method_name=magicdrive
+WORLDBENCH_EXP_ROOT=tools/exp python tools/evaluate.py modality=videogen method_name=magicdrive
 ```
 
 ## Prepare Assets With DriveStudio
@@ -138,7 +138,9 @@ python worldbench/videogen/reconstruction/prepare_assets.py \
 Available vendored configs include `configs/omnire.yaml`,
 `configs/streetgs.yaml`, `configs/pvg.yaml`, and `configs/deformablegs.yaml`.
 The backend uses DriveStudio's `nuscenes_gen/6cams` dataset config for generated
-video reconstruction and derives the training clip range from `--clips`.
+video reconstruction and trains each explicit scene ID from `--clips`.
+Numeric clip IDs are normalized to at least three digits (for example, `81` becomes `081`)
+for training, checkpoint lookup, rendering, and exported asset paths. Duplicate scene IDs are rejected.
 
 For reference, the wrapper launches DriveStudio training with the same effective
 arguments as:
@@ -149,11 +151,9 @@ python tools/train.py \
   --config_file configs/omnire.yaml \
   --output_root /path/to/WorldLens/work_dirs \
   --project drivestudio-nus-magicdrive \
-  --run_name -1 \
-  --start_idx 81 \
-  --end_idx 81 \
+  --run_name 081 \
   dataset=nuscenes_gen/6cams \
-  data.scene_idx=-1 \
+  data.scene_idx=81 \
   data.start_timestep=0 \
   data.end_timestep=-1 \
   data.data_root=/path/to/WorldLens/data/nuscenes_trainval/processed_magicdrive/advanced_12Hz_trainval
