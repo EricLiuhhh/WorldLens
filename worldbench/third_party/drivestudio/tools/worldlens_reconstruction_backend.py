@@ -43,7 +43,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-eval", action="store_true")
     parser.add_argument("--skip-depth-metrics", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--dry-run", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    try:
+        scene_ids = [int(clip) for clip in args.clips]
+    except ValueError:
+        parser.error("--clips must contain integer scene IDs")
+    if any(scene_id < 0 for scene_id in scene_ids):
+        parser.error("--clips must contain non-negative scene IDs")
+    if len(scene_ids) != len(set(scene_ids)):
+        parser.error("--clips must contain distinct scene IDs")
+    # Use one directory naming convention throughout train/eval/render/export.
+    args.clips = [f"{scene_id:03d}" for scene_id in scene_ids]
+    return args
 
 
 def write_json(path: Path, payload: Dict[str, object]) -> None:
@@ -121,30 +132,28 @@ def run_preprocess(args: argparse.Namespace) -> None:
 
 
 def run_train(args: argparse.Namespace) -> None:
-    # This mirrors train_nus_gen.sh while staying shell-independent.
-    run(
-        [
-            sys.executable,
-            "tools/train.py",
-            "--config_file",
-            args.config_file,
-            "--output_root",
-            str(args.work_root),
-            "--project",
-            f"drivestudio-nus-{args.method_name}",
-            "--run_name",
-            "-1",
-            "--start_idx",
-            str(min(int(clip) for clip in args.clips)),
-            "--end_idx",
-            str(max(int(clip) for clip in args.clips)),
-            "dataset=nuscenes_gen/6cams",
-            "data.scene_idx=-1",
-            "data.start_timestep=0",
-            "data.end_timestep=-1",
-            f"data.data_root={processed_data_root(args)}",
-        ]
-    )
+    # Scene IDs are not positional offsets into the directories on disk.
+    for clip in args.clips:
+        scene_idx = int(clip)
+        run(
+            [
+                sys.executable,
+                "tools/train.py",
+                "--config_file",
+                args.config_file,
+                "--output_root",
+                str(args.work_root),
+                "--project",
+                f"drivestudio-nus-{args.method_name}",
+                "--run_name",
+                f"{scene_idx:03d}",
+                "dataset=nuscenes_gen/6cams",
+                f"data.scene_idx={scene_idx}",
+                "data.start_timestep=0",
+                "data.end_timestep=-1",
+                f"data.data_root={processed_data_root(args)}",
+            ]
+        )
 
 
 def processed_data_root_for_method(args: argparse.Namespace, method_name: str) -> Path:
@@ -341,8 +350,9 @@ def copy_novel_videos(args: argparse.Namespace, clip_id: str) -> None:
     for view_name in NOVEL_VIEWS:
         source = render_root / view_name / "novel.mp4"
         target = out_dir / f"{view_name}.mp4"
-        if source.is_file() and not target.exists():
-            shutil.copy2(source, target)
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing rendered novel-view video: {source}")
+        shutil.copy2(source, target)
 
 
 def export_contract_assets(args: argparse.Namespace) -> None:
